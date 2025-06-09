@@ -11,12 +11,15 @@
     "lint": "expo lint"
   },
   "dependencies": {
+    "@100mslive/react-sdk": "^0.10.35",
+    "@expo/metro-runtime": "~5.0.4",
     "@expo/vector-icons": "^14.1.0",
     "@react-navigation/bottom-tabs": "^7.3.10",
     "@react-navigation/elements": "^2.3.8",
     "@react-navigation/native": "^7.1.6",
     "expo": "~53.0.10",
     "expo-blur": "~14.1.5",
+    "expo-camera": "~16.1.7",
     "expo-constants": "~17.1.6",
     "expo-font": "~13.3.1",
     "expo-haptics": "~14.1.4",
@@ -28,6 +31,7 @@
     "expo-symbols": "~0.4.5",
     "expo-system-ui": "~5.0.8",
     "expo-web-browser": "~14.1.6",
+    "firebase": "^11.9.0",
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "react-native": "0.79.3",
@@ -41,9 +45,12 @@
   "devDependencies": {
     "@babel/core": "^7.25.2",
     "@types/react": "~19.0.10",
-    "typescript": "~5.8.3",
     "eslint": "^9.25.0",
-    "eslint-config-expo": "~9.2.0"
+    "eslint-config-expo": "~9.2.0",
+    "typescript": "~5.8.3"
+  },
+  "overrides": {
+    "uuid": "3.4.0"
   },
   "private": true
 }
