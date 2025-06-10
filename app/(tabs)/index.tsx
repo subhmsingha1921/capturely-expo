@@ -1,3 +1,4 @@
+import type { HMSPeer } from "@100mslive/react-sdk";
 import {
   selectIsConnectedToRoom,
   selectPeers,
@@ -6,9 +7,9 @@ import {
   useHMSStore,
   useVideo,
 } from "@100mslive/react-sdk";
-import { CameraType, CameraView } from "expo-camera";
+import { CameraType } from "expo-camera";
 import { useEffect, useState } from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { StyleSheet } from "react-native";
 import "./styles.css";
 
 function JoinForm() {
@@ -18,14 +19,14 @@ function JoinForm() {
     token: "",
   });
 
-  const handleInputChange = (e) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setInputValues((prevValues) => ({
       ...prevValues,
       [e.target.name]: e.target.value,
     }));
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const { name = "", token = "" } = inputValues;
     console.log("Joining room", name, token);
@@ -73,11 +74,12 @@ function JoinForm() {
 
 function Conference() {
   const peers = useHMSStore(selectPeers);
+
   return (
     <div className="conference-section">
       <h2>Conference</h2>
 
-      <div className="peers-container">
+      <div className={`peers-container peers-${peers.length}`}>
         {peers.map((peer) => (
           <Peer key={peer.id} peer={peer} />
         ))}
@@ -86,19 +88,32 @@ function Conference() {
   );
 }
 
-function Peer({ peer }) {
+function Peer({ peer }: { peer: HMSPeer }) {
   const { videoRef } = useVideo({
     trackId: peer.videoTrack,
   });
+
+  const { isLocalVideoEnabled } = useAVToggle();
+  const showVideo =
+    peer.videoTrack && (peer.isLocal ? isLocalVideoEnabled : true);
+
   return (
     <div className="peer-container">
-      <video
-        ref={videoRef}
-        className={`peer-video ${peer.isLocal ? "local" : ""}`}
-        autoPlay
-        muted
-        playsInline
-      />
+      {showVideo ? (
+        <video
+          ref={videoRef}
+          className={`peer-video ${peer.isLocal ? "local" : ""}`}
+          autoPlay
+          muted
+          playsInline
+        />
+      ) : (
+        <div className="peer-initial-container peer-video">
+          <div className="peer-initial">
+            {peer.name ? peer.name.charAt(0).toUpperCase() : ""}
+          </div>
+        </div>
+      )}
       <div className="peer-name">
         {peer.name} {peer.isLocal ? "(You)" : ""}
       </div>
@@ -144,7 +159,7 @@ export default function HomeScreen() {
         <>
           <Conference />
           <Footer />
-          <CameraView style={styles.camera} facing={facing}>
+          {/* <CameraView style={styles.camera} facing={facing}>
             <View style={styles.buttonContainer}>
               <TouchableOpacity
                 style={styles.button}
@@ -153,7 +168,7 @@ export default function HomeScreen() {
                 <Text style={styles.text}>Flip Camera</Text>
               </TouchableOpacity>
             </View>
-          </CameraView>
+          </CameraView> */}
         </>
       ) : (
         <JoinForm />

@@ -99,9 +99,37 @@
 
   .peers-container {
     display: grid;
-    grid-template-columns: repeat(3, minmax(min-content, 1fr));
     place-items: center;
     grid-gap: 10px;
+    height: calc(100vh - 150px);
+  }
+
+  .peers-container.peers-1 {
+    grid-template-columns: 1fr;
+  }
+
+  .peers-container.peers-1 .peer-video {
+    height: 55vh;
+    width: 80vw;
+    max-width: 800px;
+    max-height: 800px;
+    border-radius: 20px;
+  }
+
+  .peers-container.peers-2 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .peers-container.peers-2 .peer-video {
+    height: 40vh;
+    width: 40vw;
+    max-width: 500px;
+    max-height: 500px;
+    border-radius: 20px;
+  }
+
+  .peers-container:not(.peers-1):not(.peers-2) {
+    grid-template-columns: repeat(3, minmax(min-content, 1fr));
   }
 
   .peer-video {
@@ -110,6 +138,18 @@
     border-radius: 40%;
     object-fit: cover;
     margin-bottom: 10px;
+  }
+
+  .peer-initial-container {
+    display: flex;
+    background-color: grey;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .peer-initial {
+    font-size: 32px;
+    font-weight: bold;
   }
 
   .local.peer-video {
@@ -128,7 +168,7 @@
   .control-bar {
     display: flex;
     position: fixed;
-    bottom: 100;
+    bottom: 50;
     width: 100%;
     padding: 15px;
     justify-content: center;
