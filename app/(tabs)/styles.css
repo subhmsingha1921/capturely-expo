@@ -101,7 +101,7 @@
     display: grid;
     place-items: center;
     grid-gap: 10px;
-    height: calc(100vh - 150px);
+    height: calc(100vh - 400px);
   }
 
   .peers-container.peers-1 {
