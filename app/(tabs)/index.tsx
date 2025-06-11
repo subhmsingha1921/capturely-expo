@@ -1,4 +1,5 @@
 import {
+  selectHMSMessages,
   selectIsConnectedToRoom,
   selectLocalPeer,
   selectPeers,
@@ -13,7 +14,6 @@ import {
   collection,
   doc,
   getFirestore,
-  onSnapshot,
   updateDoc,
 } from "firebase/firestore";
 import {
@@ -25,18 +25,15 @@ import {
 import React, { useEffect, useRef, useState } from "react";
 import "./styles.css";
 
-// --- Mock Firebase and 100ms Data (for demonstration) ---
-// In your actual app, you would have real config and SDK providers.
 const firebaseConfig = {
-  apiKey: "AIzaSyCmObxp7iTlgt6gYSfhC2dqVHEoB2a16BQ",
-  authDomain: "findit-ai-d93c6.firebaseapp.com",
-  databaseURL:
-    "https://findit-ai-d93c6-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "findit-ai-d93c6",
-  storageBucket: "findit-ai-d93c6.firebasestorage.app",
-  messagingSenderId: "669473493302",
-  appId: "1:669473493302:web:f23deceadadbef92b9a397",
-  measurementId: "G-G9KQLTWJE2",
+  apiKey: "AIzaSyBVFOKzAzAAdqGnhPfkrzV_5G5ugaqzGFo",
+  authDomain: "collabgpt-dev.firebaseapp.com",
+  databaseURL: "https://collabgpt-dev-default-rtdb.firebaseio.com",
+  projectId: "collabgpt-dev",
+  storageBucket: "collabgpt-dev.appspot.com",
+  messagingSenderId: "262626681862",
+  appId: "1:262626681862:web:aa52d3633154720f960f87",
+  measurementId: "G-ESM7KPV7JM",
 };
 
 // Initialize Firebase
@@ -44,13 +41,15 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const storage = getStorage(app);
 
-// --- Helper Functions for Snapshot ---
+// --- Constants ---
+const RESOLUTIONS = {
+  "640x480": { width: 640, height: 480 },
+  "1280x720": { width: 1280, height: 720 },
+  "1920x1080": { width: 1920, height: 1080 },
+  "3840x2160": { width: 3840, height: 2160 },
+};
 
-/**
- * Creates a canvas, draws the video frame to it, and returns a data URL.
- * @param {HTMLVideoElement} inputVideo The video element to capture.
- * @returns {string} A base64 encoded data URL of the captured image.
- */
+// --- Helper Functions for Snapshot ---
 export const createSnapshotFromVideo = (inputVideo) => {
   const canvas = document.createElement("canvas");
   canvas.width = inputVideo.videoWidth;
@@ -81,7 +80,6 @@ function JoinForm() {
       await hmsActions.join({ userName: inputValues.name, authToken });
     } catch (error) {
       console.error("Error joining room:", error);
-      // You could show an error message to the user here
     }
   };
 
@@ -129,9 +127,7 @@ function Peer({ peer, videoRefs }) {
     <div className={`peer-container ${isLocal ? "local-peer" : "remote-peer"}`}>
       <video
         ref={(el) => {
-          // This callback connects the element to the useVideo hook's ref
           videoRef(el);
-          // And this part updates our central map of video elements
           if (el) {
             videoRefs.current.set(peer.id, el);
           } else {
@@ -140,7 +136,7 @@ function Peer({ peer, videoRefs }) {
         }}
         className="peer-video"
         autoPlay
-        muted={isLocal} // Only mute local peer's video
+        muted={isLocal}
         playsInline
       />
       <div className="peer-name">
@@ -177,6 +173,12 @@ function Footer() {
         {isLocalVideoEnabled ? "Hide Video" : "Show Video"}
       </button>
       <button
+        className="btn btn-control"
+        onClick={() => hmsActions.switchCamera()}
+      >
+        Switch Camera
+      </button>
+      <button
         className="btn btn-control btn-leave"
         onClick={() => hmsActions.leave()}
       >
@@ -186,160 +188,171 @@ function Footer() {
   );
 }
 
-// --- Main App Component (formerly HomeScreen) ---
-
 export default function App() {
   const isConnected = useHMSStore(selectIsConnectedToRoom);
   const hmsActions = useHMSActions();
   const peers = useHMSStore(selectPeers);
   const localPeer = useHMSStore(selectLocalPeer);
+  const messages = useHMSStore(selectHMSMessages);
 
   const [userRole, setUserRole] = useState(null);
   const [lastPhotoUrl, setLastPhotoUrl] = useState(null);
-  const [isUploading, setIsUploading] = useState(false);
+  const [photoState, setPhotoState] = useState("idle"); // idle, waiting_ack, uploading
+  const [selectedResolution, setSelectedResolution] = useState("640x480");
 
-  // This ref will hold a Map of { peerId: videoElement }
   const videoRefs = useRef(new Map());
+  const photoRequestRef = useRef(null);
 
-  // Effect to handle leaving the room on window close
+  // --- Core Snapshot Logic ---
+
+  // This effect runs on the CLIENT's device, listening for requests from the photographer
   useEffect(() => {
-    const handleUnload = () => {
-      if (isConnected) {
-        hmsActions.leave();
-      }
-    };
-    window.addEventListener("beforeunload", handleUnload);
-    return () => {
-      window.removeEventListener("beforeunload", handleUnload);
-    };
-  }, [hmsActions, isConnected]);
+    if (userRole !== "client" || !messages.length) return;
 
-  // Effect to listen for completed photos from Firestore
+    const lastMessage = messages[messages.length - 1];
+    if (
+      lastMessage.type === "REQUEST_RESOLUTION" &&
+      lastMessage.sender !== localPeer?.id
+    ) {
+      console.log("Client: Received resolution request", lastMessage.message);
+      const { resolution, photographerId } = JSON.parse(lastMessage.message);
+
+      hmsActions
+        .setVideoSettings(resolution)
+        .then(() => {
+          console.log("Client: Resolution changed successfully.");
+          hmsActions.sendDirectMessage("ack", photographerId, "RESOLUTION_ACK");
+        })
+        .catch((err) =>
+          console.error("Client: Failed to set video settings", err)
+        );
+    }
+  }, [messages, userRole, hmsActions, localPeer?.id]);
+
+  // This effect runs on the PHOTOGRAPHER's device, listening for acknowledgment
   useEffect(() => {
-    if (userRole !== "photographer") return;
+    if (
+      userRole !== "photographer" ||
+      !messages.length ||
+      photoState !== "waiting_ack"
+    )
+      return;
 
-    const q = collection(db, "photos");
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      snapshot.docChanges().forEach((change) => {
-        if (change.type === "modified") {
-          const data = change.doc.data();
-          // Check if this photo was taken by the current photographer
-          if (
-            data.status === "completed" &&
-            data.photographerId === localPeer?.id
-          ) {
-            console.log("Photo capture completed:", data.photoURL);
-            setLastPhotoUrl(data.photoURL);
+    const lastMessage = messages[messages.length - 1];
+    if (
+      lastMessage.type === "RESOLUTION_ACK" &&
+      lastMessage.sender === photoRequestRef.current?.clientId
+    ) {
+      console.log("Photographer: Received ACK from client. Taking snapshot.");
+      const { clientId, photographerId } = photoRequestRef.current;
+      const videoElement = videoRefs.current.get(clientId);
+
+      if (videoElement && videoElement.readyState >= 2) {
+        // Use a short timeout to allow the camera to stabilize at the new resolution
+        setTimeout(() => {
+          const dataUrl = createSnapshotFromVideo(videoElement);
+          if (dataUrl) {
+            uploadAndSavePhoto(dataUrl, photographerId, clientId);
           }
-        }
-      });
-    });
+        }, 500);
+      } else {
+        console.error("Client video not ready for snapshot.");
+        setPhotoState("idle");
+      }
+    }
+  }, [messages, userRole, photoState]);
 
-    return () => unsubscribe();
-  }, [userRole, localPeer?.id]);
-
-  /**
-   * Uploads the photo data URL to Firebase Storage and updates Firestore.
-   */
   const uploadAndSavePhoto = async (dataUrl, photographerId, clientId) => {
-    setIsUploading(true);
-    let docRef;
+    setPhotoState("uploading");
     try {
-      // 1. Create a document in Firestore to get an ID
-      docRef = await addDoc(collection(db, "photos"), {
+      const docRef = await addDoc(collection(db, "photos"), {
         status: "uploading",
         photographerId,
         clientId,
         createdAt: new Date().toISOString(),
         photoURL: "",
       });
-      console.log("Created Firestore document with ID:", docRef.id);
-
-      // 2. Convert data URL to blob for upload
       const response = await fetch(dataUrl);
       const blob = await response.blob();
-
-      // 3. Upload to Firebase Storage
       const photoStorageRef = storageRef(storage, `photos/${docRef.id}.png`);
       await uploadBytes(photoStorageRef, blob);
-
-      // 4. Get the public download URL
       const downloadURL = await getDownloadURL(photoStorageRef);
-      console.log("Photo uploaded, download URL:", downloadURL);
-
-      // 5. Update the Firestore document with the URL and final status
       await updateDoc(doc(db, "photos", docRef.id), {
         photoURL: downloadURL,
         status: "completed",
       });
+      setLastPhotoUrl(downloadURL);
     } catch (e) {
       console.error("Error in upload process: ", e);
-      if (docRef) {
-        // If something failed, mark it as an error in Firestore
-        await updateDoc(doc(db, "photos", docRef.id), { status: "error" });
-      }
     } finally {
-      setIsUploading(false);
+      setPhotoState("idle");
+      photoRequestRef.current = null;
     }
   };
 
-  /**
-   * The main function for the photographer to initiate a snapshot.
-   */
-  const handleTakePhoto = () => {
-    // 1. Find the remote peer (the "client")
+  const handleTakePhotoRequest = () => {
+    if (photoState !== "idle") return;
+
     const clientPeer = peers.find((p) => !p.isLocal);
     if (!clientPeer) {
       alert("No client found in the room to photograph.");
       return;
     }
 
-    // 2. Get the client's video element from our ref map
-    const videoElement = videoRefs.current.get(clientPeer.id);
-    if (!videoElement || videoElement.readyState < 2) {
-      // readyState check ensures video is playable
-      alert("Client's video is not available or ready.");
-      return;
-    }
+    console.log(
+      `Photographer: Requesting ${selectedResolution} from client ${clientPeer.id}`
+    );
+    const message = JSON.stringify({
+      resolution: RESOLUTIONS[selectedResolution],
+      photographerId: localPeer?.id,
+    });
 
     try {
-      // 3. Create the snapshot
-      const dataUrl = createSnapshotFromVideo(videoElement);
+      hmsActions.sendDirectMessage(
+        message,
+        clientPeer.id,
+        "REQUEST_RESOLUTION"
+      );
+      setPhotoState("waiting_ack");
+      photoRequestRef.current = {
+        clientId: clientPeer.id,
+        photographerId: localPeer?.id,
+      };
+    } catch (error) {
+      // Catch the error, log it, and notify the user without crashing.
+      console.error("Failed to send photo request:", error);
+      alert(
+        "Could not send request to the client. They may have left the room. Please try again."
+      );
 
-      // 4. Start the upload and save process
-      if (dataUrl) {
-        uploadAndSavePhoto(dataUrl, localPeer.id, clientPeer.id);
-      }
-    } catch (e) {
-      console.error("Error taking snapshot:", e);
-      alert("Could not take snapshot. See console for details.");
+      // Reset the state so the photographer can try again.
+      setPhotoState("idle");
     }
   };
 
   // --- Render Logic ---
 
-  if (!isConnected) {
-    return <JoinForm />;
-  }
+  if (!isConnected) return <JoinForm />;
 
-  // Role selection screen
   if (!userRole) {
     return (
-      <div className="role-selection">
-        <h2>Select Your Role</h2>
-        <div className="role-buttons">
-          <button
-            className="btn btn-primary"
-            onClick={() => setUserRole("photographer")}
-          >
-            I am the Photographer
-          </button>
-          <button
-            className="btn btn-secondary"
-            onClick={() => setUserRole("client")}
-          >
-            I am the Client
-          </button>
+      <div className="join-form-container">
+        <div className="join-form">
+          <h2 className="form-title">Select Your Role</h2>
+          <div className="role-buttons">
+            <button
+              className="btn btn-primary"
+              onClick={() => setUserRole("photographer")}
+            >
+              I am the Photographer
+            </button>
+            <button
+              className="btn btn-secondary"
+              onClick={() => setUserRole("client")}
+            >
+              I am the Client
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -352,13 +365,31 @@ export default function App() {
       <div className="main-controls">
         {userRole === "photographer" && (
           <div className="photographer-panel">
-            <button
-              className="btn btn-capture"
-              onClick={handleTakePhoto}
-              disabled={isUploading}
-            >
-              {isUploading ? "Uploading..." : "📸 Take Photo of Client"}
-            </button>
+            <div className="photo-actions">
+              <label htmlFor="resolution-select">Resolution:</label>
+              <select
+                id="resolution-select"
+                className="resolution-select"
+                value={selectedResolution}
+                onChange={(e) => setSelectedResolution(e.target.value)}
+                disabled={photoState !== "idle"}
+              >
+                {Object.keys(RESOLUTIONS).map((res) => (
+                  <option key={res} value={res}>
+                    {res}
+                  </option>
+                ))}
+              </select>
+              <button
+                className="btn btn-capture"
+                onClick={handleTakePhotoRequest}
+                disabled={photoState !== "idle"}
+              >
+                {photoState === "idle" && "📸 Take Photo"}
+                {photoState === "waiting_ack" && "Waiting for Client..."}
+                {photoState === "uploading" && "Uploading..."}
+              </button>
+            </div>
             {lastPhotoUrl && (
               <div className="photo-preview-container">
                 <p>Last Photo Taken:</p>
@@ -369,7 +400,7 @@ export default function App() {
                 >
                   <img
                     src={lastPhotoUrl}
-                    alt="Last snapshot taken"
+                    alt="Last snapshot"
                     className="photo-preview"
                   />
                 </a>
@@ -379,8 +410,7 @@ export default function App() {
         )}
         {userRole === "client" && (
           <div className="client-panel">
-            <h2>Welcome!</h2>
-            <p>The photographer will take your picture.</p>
+            <h2>Welcome! The photographer will take your picture.</h2>
           </div>
         )}
       </div>
@@ -389,6 +419,3 @@ export default function App() {
     </div>
   );
 }
-
-// NOTE: You need to wrap your main <App /> component in <HMSRoomProvider>
-// from '@100mslive/react-sdk' for this to work in a real application.

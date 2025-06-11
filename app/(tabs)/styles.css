@@ -1,114 +1,66 @@
 /* General Body Styles */
+:root {
+  --primary-bg: #1a1a1a;
+  --secondary-bg: #252525;
+  --tertiary-bg: #2c2c2c;
+  --primary-text: #f0f0f0;
+  --primary-action: #2f80ed;
+  --danger-action: #e53935;
+  --border-color: #444;
+}
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  background-color: #1a1a1a;
-  color: #f0f0f0;
+  background-color: var(--primary-bg);
+  color: var(--primary-text);
+  overflow: hidden; /* Prevent body scroll */
 }
 
-/* App Container */
-.app-container, .role-selection, .join-form-container {
+/* App Layout */
+.app-container, .join-form-container {
   display: flex;
   flex-direction: column;
   height: 100vh;
   width: 100vw;
   box-sizing: border-box;
-  text-align: center;
 }
 
-.role-selection, .join-form-container {
-    justify-content: center;
-    align-items: center;
-}
-
-/* Join Form */
-.join-form {
-    background-color: #2c2c2c;
-    padding: 2rem 3rem;
-    border-radius: 12px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-    width: 100%;
-    max-width: 400px;
-}
-.form-title {
-    margin-top: 0;
-    margin-bottom: 1.5rem;
-}
-.input-group {
-    margin-bottom: 1rem;
-}
-.input-field {
-    width: 100%;
-    padding: 0.75rem 1rem;
-    border-radius: 8px;
-    border: 1px solid #555;
-    background-color: #333;
-    color: #fff;
-    font-size: 1rem;
-    box-sizing: border-box;
-}
-.input-field::placeholder {
-    color: #888;
-}
-
-/* Buttons */
-.btn {
-  padding: 0.75rem 1.5rem;
-  font-size: 1rem;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s ease-in-out;
-  font-weight: bold;
-}
-.btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-.btn-primary {
-  background-color: #2f80ed;
-  color: white;
-}
-.btn-primary:hover:not(:disabled) {
-  background-color: #2567c9;
-}
-.btn-secondary {
-    background-color: #555;
-    color: white;
-    margin-left: 1rem;
-}
-.btn-secondary:hover:not(:disabled) {
-    background-color: #777;
+.join-form-container {
+  justify-content: center;
+  align-items: center;
 }
 
 /* Conference & Peers */
 .conference-section {
-  flex-grow: 1;
+  flex: 1; /* This makes the video area grow and shrink */
   display: flex;
   justify-content: center;
   align-items: center;
   padding: 1rem;
+  min-height: 0; /* Important for flexbox shrinking */
+  box-sizing: border-box;
 }
+
 .peers-container {
   display: grid;
   gap: 1rem;
   width: 100%;
   height: 100%;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
 }
+
 .peer-container {
   position: relative;
   background-color: #000;
   border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
   display: flex;
   justify-content: center;
   align-items: center;
+  min-height: 200px;
 }
 .peer-video {
   width: 100%;
@@ -118,60 +70,122 @@ body {
 }
 .peer-name {
   position: absolute;
-  bottom: 0;
-  left: 0;
+  bottom: 0; left: 0;
   background-color: rgba(0, 0, 0, 0.6);
   color: white;
   padding: 0.5rem 1rem;
   border-top-right-radius: 8px;
-  font-weight: 500;
 }
 
-/* Controls */
+/* Controls Area */
 .main-controls {
-    padding: 1rem;
+  padding: 1rem;
+  background-color: var(--secondary-bg);
+  flex-shrink: 0; /* Prevent this area from shrinking */
 }
-.photographer-panel {
+.photographer-panel, .client-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+.photo-actions {
     display: flex;
-    flex-direction: column;
     align-items: center;
     gap: 1rem;
+    flex-wrap: wrap; /* Allow wrapping on small screens */
+    justify-content: center;
 }
-.btn-capture {
-    background-color: #e53935;
+
+.resolution-select {
+    padding: 0.75rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background-color: #333;
     color: white;
-    font-size: 1.2rem;
-    padding: 1rem 2rem;
+    font-weight: bold;
 }
-.btn-capture:hover:not(:disabled) {
-    background-color: #c62828;
-}
+
 .photo-preview-container {
-    margin-top: 1rem;
+  margin-top: 1rem;
+  text-align: center;
 }
 .photo-preview {
-    max-width: 200px;
-    border-radius: 8px;
-    border: 3px solid #444;
-    margin-top: 0.5rem;
+  max-width: 150px;
+  max-height: 150px;
+  border-radius: 8px;
+  border: 3px solid var(--border-color);
+  margin-top: 0.5rem;
 }
+
+/* Footer Control Bar */
 .control-bar {
   display: flex;
   justify-content: center;
   gap: 1rem;
   padding: 1rem;
-  background-color: #252525;
+  background-color: var(--tertiary-bg);
+  flex-wrap: wrap;
+  flex-shrink: 0;
 }
-.btn-control {
-  background-color: #4a4a4a;
+
+/* General UI Elements */
+.join-form {
+  background-color: var(--tertiary-bg);
+  padding: 2rem;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  width: 90%;
+  max-width: 400px;
+}
+.input-field {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background-color: #333;
   color: white;
+  font-size: 1rem;
+  box-sizing: border-box;
+  margin-bottom: 1rem;
 }
-.btn-control:hover:not(:disabled) {
-  background-color: #5a5a5a;
+
+/* Buttons */
+.role-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
 }
-.btn-leave {
-    background-color: #b71c1c;
+.btn {
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  font-weight: bold;
 }
-.btn-leave:hover:not(:disabled) {
-    background-color: #d32f2f;
+.btn:disabled { cursor: not-allowed; opacity: 0.6; }
+
+.btn-primary { background-color: var(--primary-action); color: white; }
+.btn-primary:hover:not(:disabled) { background-color: #2567c9; }
+.btn-capture { background-color: var(--danger-action); color: white; }
+.btn-capture:hover:not(:disabled) { background-color: #c62828; }
+.btn-control { background-color: #4a4a4a; color: white; }
+.btn-control:hover:not(:disabled) { background-color: #5a5a5a; }
+.btn-leave { background-color: #a12d2d; }
+.btn-leave:hover:not(:disabled) { background-color: #c62828; }
+
+/* Mobile Responsiveness */
+@media (max-width: 768px) {
+    .btn {
+        padding: 0.8rem 1rem;
+        font-size: 0.9rem;
+    }
+    .photo-actions {
+        flex-direction: column;
+    }
+    .peers-container.peers-count-1 .peer-container {
+        grid-column: 1 / -1; /* Make single peer take full width */
+    }
 }
