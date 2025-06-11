@@ -106,18 +106,6 @@ body {
     font-weight: bold;
 }
 
-.photo-preview-container {
-  margin-top: 1rem;
-  text-align: center;
-}
-.photo-preview {
-  max-width: 150px;
-  max-height: 150px;
-  border-radius: 8px;
-  border: 3px solid var(--border-color);
-  margin-top: 0.5rem;
-}
-
 /* Footer Control Bar */
 .control-bar {
   display: flex;
@@ -186,6 +174,93 @@ body {
         flex-direction: column;
     }
     .peers-container.peers-count-1 .peer-container {
-        grid-column: 1 / -1; /* Make single peer take full width */
+      max-width: 90vh;
+      max-height: 100%;
+      aspect-ratio: 9 / 16;
     }
+    .client-panel h2 {
+      font-size: 1.2rem;
+      text-align: center;
+      padding: 0 1rem;
+    }
+}
+
+/* Make this more specific for mobile solo view */
+@media (max-width: 768px) and (orientation: portrait) {
+  .peers-container.peers-count-1 .peer-container {
+    max-width: 100%;
+    aspect-ratio: unset; /* Let it fill the space */
+    width: 100%;
+    height: 100%;
+  }
+}
+
+/* --- Styles for Icon Buttons --- */
+.btn-icon {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%; /* Make them circular */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 0; /* Remove padding to center icon perfectly */
+}
+.btn-icon.btn-leave {
+    width: 60px;
+}
+
+
+/* --- New Styles for Toast Preview --- */
+.photo-toast {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 1000;
+  background-color: var(--tertiary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  width: 200px;
+  animation: slide-in 0.5s ease-out forwards;
+}
+
+.toast-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  font-weight: bold;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.toast-close-btn {
+  background: none;
+  border: none;
+  color: var(--primary-text);
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+}
+
+.toast-preview-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 200px;
+  object-fit: cover;
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
+}
+
+/* Animation for the toast */
+@keyframes slide-in {
+  from {
+    transform: translateX(120%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }

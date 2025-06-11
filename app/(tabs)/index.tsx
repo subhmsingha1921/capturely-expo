@@ -8,6 +8,7 @@ import {
   useHMSStore,
   useVideo,
 } from "@100mslive/react-sdk";
+import { MaterialIcons } from "@expo/vector-icons";
 import { initializeApp } from "firebase/app";
 import {
   addDoc,
@@ -107,6 +108,28 @@ const captureAndUploadLocalPhoto = async (track, photographerId, clientId) => {
 
 // --- React Components ---
 
+function PhotoToast({ photoUrl, onClose }) {
+  if (!photoUrl) return null;
+
+  return (
+    <div className="photo-toast">
+      <div className="toast-header">
+        <span>Photo Captured</span>
+        <button onClick={onClose} className="toast-close-btn">
+          <MaterialIcons name="close" size={18} color="white" />
+        </button>
+      </div>
+      <a href={photoUrl} target="_blank" rel="noopener noreferrer">
+        <img
+          src={photoUrl}
+          alt="Snapshot preview"
+          className="toast-preview-img"
+        />
+      </a>
+    </div>
+  );
+}
+
 function JoinForm() {
   const hmsActions = useHMSActions();
   const [inputValues, setInputValues] = useState({ name: "", token: "" });
@@ -190,12 +213,31 @@ function Peer({ peer, videoRefs }) {
   );
 }
 
-function Conference({ videoRefs }) {
+function Conference({ videoRefs, userRole, isPhotographerVisible }) {
   const peers = useHMSStore(selectPeers);
+
+  // Filter peers based on the client's toggle
+  const visiblePeers = peers.filter((peer) => {
+    // The photographer always sees everyone
+    if (userRole === "photographer") {
+      return true;
+    }
+    // The client's logic
+    if (userRole === "client") {
+      // Always show themselves
+      if (peer.isLocal) {
+        return true;
+      }
+      // Show the remote peer (photographer) only if toggled on
+      return isPhotographerVisible;
+    }
+    return true;
+  });
+
   return (
     <div className="conference-section">
-      <div className={`peers-container peers-count-${peers.length}`}>
-        {peers.map((peer) => (
+      <div className={`peers-container peers-count-${visiblePeers.length}`}>
+        {visiblePeers.map((peer) => (
           <Peer key={peer.id} peer={peer} videoRefs={videoRefs} />
         ))}
       </div>
@@ -203,30 +245,53 @@ function Conference({ videoRefs }) {
   );
 }
 
-function Footer() {
+function Footer({ userRole, isPhotographerVisible, setIsPhotographerVisible }) {
   const { isLocalAudioEnabled, isLocalVideoEnabled, toggleAudio, toggleVideo } =
     useAVToggle();
   const hmsActions = useHMSActions();
 
   return (
     <div className="control-bar">
-      <button className="btn btn-control" onClick={toggleAudio}>
-        {isLocalAudioEnabled ? "Mute" : "Unmute"}
+      <button className="btn btn-control btn-icon" onClick={toggleAudio}>
+        {isLocalAudioEnabled ? (
+          <MaterialIcons name="mic" size={24} color="white" />
+        ) : (
+          <MaterialIcons name="mic-off" size={24} color="white" />
+        )}
       </button>
-      <button className="btn btn-control" onClick={toggleVideo}>
-        {isLocalVideoEnabled ? "Hide Video" : "Show Video"}
+      <button className="btn btn-control btn-icon" onClick={toggleVideo}>
+        {isLocalVideoEnabled ? (
+          <MaterialIcons name="videocam" size={24} color="white" />
+        ) : (
+          <MaterialIcons name="videocam-off" size={24} color="white" />
+        )}
       </button>
       <button
-        className="btn btn-control"
+        className="btn btn-control btn-icon"
         onClick={() => hmsActions.switchCamera()}
       >
-        Switch Camera
+        <MaterialIcons name="flip-camera-ios" size={24} color="white" />
       </button>
+
+      {/* NEW: This button only shows up for the client */}
+      {userRole === "client" && (
+        <button
+          className="btn btn-control btn-icon"
+          onClick={() => setIsPhotographerVisible((prev) => !prev)}
+        >
+          {isPhotographerVisible ? (
+            <MaterialIcons name="visibility-off" size={24} color="white" />
+          ) : (
+            <MaterialIcons name="visibility" size={24} color="white" />
+          )}
+        </button>
+      )}
+
       <button
-        className="btn btn-control btn-leave"
+        className="btn btn-control btn-icon btn-leave"
         onClick={() => hmsActions.leave()}
       >
-        Leave
+        <MaterialIcons name="call-end" size={24} color="white" />
       </button>
     </div>
   );
@@ -240,9 +305,10 @@ export default function App() {
   const messages = useHMSStore(selectHMSMessages);
 
   const [userRole, setUserRole] = useState(null);
-  const [lastPhotoUrl, setLastPhotoUrl] = useState(null);
   const [photoState, setPhotoState] = useState("idle"); // idle, waiting_ack, uploading
   const [selectedResolution, setSelectedResolution] = useState("640x480");
+  const [toastPhotoUrl, setToastPhotoUrl] = useState(null);
+  const [isPhotographerVisible, setIsPhotographerVisible] = useState(true);
 
   const videoRefs = useRef(new Map());
 
@@ -313,8 +379,15 @@ export default function App() {
         "Photographer: Received completed photo URL.",
         lastMessage.message
       );
-      setLastPhotoUrl(lastMessage.message);
+
+      setToastPhotoUrl(lastMessage.message);
       setPhotoState("idle"); // Reset the state
+
+      const timer = setTimeout(() => {
+        setToastPhotoUrl(null);
+      }, 7000);
+
+      return () => clearTimeout(timer);
     } else if (lastMessage.type === "PHOTO_FAILED") {
       console.error("Photographer: Client reported photo failure.");
       alert("The client was unable to take the photo. Please try again.");
@@ -388,7 +461,18 @@ export default function App() {
 
   return (
     <div className="app-container">
-      <Conference videoRefs={videoRefs} />
+      <Conference
+        videoRefs={videoRefs}
+        userRole={userRole}
+        isPhotographerVisible={isPhotographerVisible}
+      />
+
+      {userRole === "photographer" && (
+        <PhotoToast
+          photoUrl={toastPhotoUrl}
+          onClose={() => setToastPhotoUrl(null)}
+        />
+      )}
 
       <div className="main-controls">
         {userRole === "photographer" && (
@@ -417,22 +501,6 @@ export default function App() {
                 {photoState === "waiting_for_photo" && "Waiting for Photo..."}
               </button>
             </div>
-            {lastPhotoUrl && (
-              <div className="photo-preview-container">
-                <p>Last Photo Taken:</p>
-                <a
-                  href={lastPhotoUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <img
-                    src={lastPhotoUrl}
-                    alt="Last snapshot"
-                    className="photo-preview"
-                  />
-                </a>
-              </div>
-            )}
           </div>
         )}
         {userRole === "client" && (
@@ -442,7 +510,11 @@ export default function App() {
         )}
       </div>
 
-      <Footer />
+      <Footer
+        userRole={userRole}
+        isPhotographerVisible={isPhotographerVisible}
+        setIsPhotographerVisible={setIsPhotographerVisible}
+      />
     </div>
   );
 }
