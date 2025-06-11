@@ -186,7 +186,7 @@ function JoinForm() {
   );
 }
 
-function Peer({ peer, videoRefs }) {
+function Peer({ peer, videoRefs, isFrontCamera }) {
   const { videoRef } = useVideo({ trackId: peer.videoTrack });
   const isLocal = peer.isLocal;
 
@@ -201,7 +201,7 @@ function Peer({ peer, videoRefs }) {
             videoRefs.current.delete(peer.id);
           }
         }}
-        className="peer-video"
+        className={`peer-video ${isLocal && !isFrontCamera ? "no-mirror" : ""}`}
         autoPlay
         muted={isLocal}
         playsInline
@@ -213,7 +213,12 @@ function Peer({ peer, videoRefs }) {
   );
 }
 
-function Conference({ videoRefs, userRole, isPhotographerVisible }) {
+function Conference({
+  videoRefs,
+  userRole,
+  isPhotographerVisible,
+  isFrontCamera,
+}) {
   const peers = useHMSStore(selectPeers);
 
   // Filter peers based on the client's toggle
@@ -238,17 +243,32 @@ function Conference({ videoRefs, userRole, isPhotographerVisible }) {
     <div className="conference-section">
       <div className={`peers-container peers-count-${visiblePeers.length}`}>
         {visiblePeers.map((peer) => (
-          <Peer key={peer.id} peer={peer} videoRefs={videoRefs} />
+          <Peer
+            key={peer.id}
+            peer={peer}
+            videoRefs={videoRefs}
+            isFrontCamera={isFrontCamera}
+          />
         ))}
       </div>
     </div>
   );
 }
 
-function Footer({ userRole, isPhotographerVisible, setIsPhotographerVisible }) {
+function Footer({
+  userRole,
+  isPhotographerVisible,
+  setIsPhotographerVisible,
+  setIsFrontCamera,
+}) {
   const { isLocalAudioEnabled, isLocalVideoEnabled, toggleAudio, toggleVideo } =
     useAVToggle();
   const hmsActions = useHMSActions();
+
+  const handleCameraSwitch = () => {
+    hmsActions.switchCamera();
+    setIsFrontCamera((prev) => !prev);
+  };
 
   return (
     <div className="control-bar">
@@ -266,10 +286,7 @@ function Footer({ userRole, isPhotographerVisible, setIsPhotographerVisible }) {
           <MaterialIcons name="videocam-off" size={24} color="white" />
         )}
       </button>
-      <button
-        className="btn btn-control btn-icon"
-        onClick={() => hmsActions.switchCamera()}
-      >
+      <button className="btn btn-control btn-icon" onClick={handleCameraSwitch}>
         <MaterialIcons name="flip-camera-ios" size={24} color="white" />
       </button>
 
@@ -309,6 +326,7 @@ export default function App() {
   const [selectedResolution, setSelectedResolution] = useState("640x480");
   const [toastPhotoUrl, setToastPhotoUrl] = useState(null);
   const [isPhotographerVisible, setIsPhotographerVisible] = useState(true);
+  const [isFrontCamera, setIsFrontCamera] = useState(true);
 
   const videoRefs = useRef(new Map());
 
@@ -465,6 +483,7 @@ export default function App() {
         videoRefs={videoRefs}
         userRole={userRole}
         isPhotographerVisible={isPhotographerVisible}
+        isFrontCamera={isFrontCamera}
       />
 
       {userRole === "photographer" && (
@@ -514,6 +533,7 @@ export default function App() {
         userRole={userRole}
         isPhotographerVisible={isPhotographerVisible}
         setIsPhotographerVisible={setIsPhotographerVisible}
+        setIsFrontCamera={setIsFrontCamera}
       />
     </div>
   );

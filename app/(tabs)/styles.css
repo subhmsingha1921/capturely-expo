@@ -68,6 +68,9 @@ body {
   object-fit: cover;
   transform: scaleX(-1);
 }
+.peer-video.no-mirror {
+  transform: none;
+}
 .peer-name {
   position: absolute;
   bottom: 0; left: 0;
