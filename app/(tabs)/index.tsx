@@ -50,15 +50,59 @@ const RESOLUTIONS = {
 };
 
 // --- Helper Functions for Snapshot ---
-export const createSnapshotFromVideo = (inputVideo) => {
-  const canvas = document.createElement("canvas");
-  canvas.width = inputVideo.videoWidth;
-  canvas.height = inputVideo.videoHeight;
-  const context = canvas.getContext("2d");
-  if (context) {
-    context.drawImage(inputVideo, 0, 0, canvas.width, canvas.height);
+const captureAndUploadLocalPhoto = async (track, photographerId, clientId) => {
+  if (!track) {
+    console.error("Client: No local video track found to capture.");
+    return null;
   }
-  return canvas.toDataURL("image/png");
+
+  let blob;
+  try {
+    // Try the high-quality ImageCapture API first
+    const imageCapture = new ImageCapture(track);
+    blob = await imageCapture.takePhoto();
+    console.log("Client: Captured photo using ImageCapture API.");
+  } catch (error) {
+    console.warn("Client: ImageCapture failed, falling back to canvas.", error);
+    // Fallback to canvas method if ImageCapture is not supported or fails
+    const video = document.createElement("video");
+    video.srcObject = new MediaStream([track]);
+    await video.play(); // Play to get the video dimensions
+
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const context = canvas.getContext("2d");
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+  }
+
+  if (!blob) {
+    console.error("Client: Failed to capture photo using any method.");
+    return null;
+  }
+
+  // The rest of this is the upload logic, now running on the client
+  try {
+    const docRef = await addDoc(collection(db, "photos"), {
+      status: "uploading",
+      photographerId,
+      clientId,
+      createdAt: new Date().toISOString(),
+      photoURL: "",
+    });
+    const photoStorageRef = storageRef(storage, `photos/${docRef.id}.png`);
+    await uploadBytes(photoStorageRef, blob);
+    const downloadURL = await getDownloadURL(photoStorageRef);
+    await updateDoc(doc(db, "photos", docRef.id), {
+      photoURL: downloadURL,
+      status: "completed",
+    });
+    return downloadURL;
+  } catch (e) {
+    console.error("Client: Error in upload process: ", e);
+    return null;
+  }
 };
 
 // --- React Components ---
@@ -201,94 +245,82 @@ export default function App() {
   const [selectedResolution, setSelectedResolution] = useState("640x480");
 
   const videoRefs = useRef(new Map());
-  const photoRequestRef = useRef(null);
 
   // --- Core Snapshot Logic ---
 
-  // This effect runs on the CLIENT's device, listening for requests from the photographer
+  // EFFECT 1: Runs on the CLIENT, listening for the command to take a photo.
   useEffect(() => {
     if (userRole !== "client" || !messages.length) return;
 
     const lastMessage = messages[messages.length - 1];
     if (
-      lastMessage.type === "REQUEST_RESOLUTION" &&
+      lastMessage.type === "TAKE_PHOTO_COMMAND" &&
       lastMessage.sender !== localPeer?.id
     ) {
-      console.log("Client: Received resolution request", lastMessage.message);
+      console.log("Client: Received photo command", lastMessage.message);
       const { resolution, photographerId } = JSON.parse(lastMessage.message);
 
-      hmsActions
-        .setVideoSettings(resolution)
-        .then(() => {
-          console.log("Client: Resolution changed successfully.");
-          hmsActions.sendDirectMessage("ack", photographerId, "RESOLUTION_ACK");
-        })
-        .catch((err) =>
-          console.error("Client: Failed to set video settings", err)
-        );
-    }
-  }, [messages, userRole, hmsActions, localPeer?.id]);
+      const takePhoto = async () => {
+        try {
+          // 1. Set the resolution
+          await hmsActions.setVideoSettings(resolution);
+          console.log("Client: Resolution change requested.");
 
-  // This effect runs on the PHOTOGRAPHER's device, listening for acknowledgment
+          // 2. Wait for camera to stabilize
+          await new Promise((resolve) => setTimeout(resolve, 1000)); // Wait 1 second
+
+          // 3. Capture and upload the photo
+          const localVideoTrack = localPeer?.videoTrack;
+          const track = hmsActions.getTrackById(localVideoTrack);
+          const downloadURL = await captureAndUploadLocalPhoto(
+            track?.nativeTrack,
+            photographerId,
+            localPeer?.id
+          );
+
+          // 4. Send the result back to the photographer
+          if (downloadURL) {
+            hmsActions.sendDirectMessage(
+              downloadURL,
+              photographerId,
+              "PHOTO_COMPLETE"
+            );
+          } else {
+            hmsActions.sendDirectMessage(
+              "error",
+              photographerId,
+              "PHOTO_FAILED"
+            );
+          }
+        } catch (err) {
+          console.error("Client: Photo capture process failed", err);
+          hmsActions.sendDirectMessage("error", photographerId, "PHOTO_FAILED");
+        }
+      };
+
+      takePhoto();
+    }
+  }, [messages, userRole, hmsActions, localPeer]);
+
+  // EFFECT 2: Runs on the PHOTOGRAPHER, listening for the final photo URL.
   useEffect(() => {
-    if (
-      userRole !== "photographer" ||
-      !messages.length ||
-      photoState !== "waiting_ack"
-    )
-      return;
+    if (userRole !== "photographer" || !messages.length) return;
 
     const lastMessage = messages[messages.length - 1];
-    if (
-      lastMessage.type === "RESOLUTION_ACK" &&
-      lastMessage.sender === photoRequestRef.current?.clientId
-    ) {
-      console.log("Photographer: Received ACK from client. Taking snapshot.");
-      const { clientId, photographerId } = photoRequestRef.current;
-      const videoElement = videoRefs.current.get(clientId);
 
-      if (videoElement && videoElement.readyState >= 2) {
-        // Use a short timeout to allow the camera to stabilize at the new resolution
-        setTimeout(() => {
-          const dataUrl = createSnapshotFromVideo(videoElement);
-          if (dataUrl) {
-            uploadAndSavePhoto(dataUrl, photographerId, clientId);
-          }
-        }, 500);
-      } else {
-        console.error("Client video not ready for snapshot.");
-        setPhotoState("idle");
-      }
-    }
-  }, [messages, userRole, photoState]);
-
-  const uploadAndSavePhoto = async (dataUrl, photographerId, clientId) => {
-    setPhotoState("uploading");
-    try {
-      const docRef = await addDoc(collection(db, "photos"), {
-        status: "uploading",
-        photographerId,
-        clientId,
-        createdAt: new Date().toISOString(),
-        photoURL: "",
-      });
-      const response = await fetch(dataUrl);
-      const blob = await response.blob();
-      const photoStorageRef = storageRef(storage, `photos/${docRef.id}.png`);
-      await uploadBytes(photoStorageRef, blob);
-      const downloadURL = await getDownloadURL(photoStorageRef);
-      await updateDoc(doc(db, "photos", docRef.id), {
-        photoURL: downloadURL,
-        status: "completed",
-      });
-      setLastPhotoUrl(downloadURL);
-    } catch (e) {
-      console.error("Error in upload process: ", e);
-    } finally {
+    if (lastMessage.type === "PHOTO_COMPLETE") {
+      console.log(
+        "Photographer: Received completed photo URL.",
+        lastMessage.message
+      );
+      setLastPhotoUrl(lastMessage.message);
+      setPhotoState("idle"); // Reset the state
+    } else if (lastMessage.type === "PHOTO_FAILED") {
+      console.error("Photographer: Client reported photo failure.");
+      alert("The client was unable to take the photo. Please try again.");
       setPhotoState("idle");
-      photoRequestRef.current = null;
     }
-  };
+  }, [messages, userRole]);
 
   const handleTakePhotoRequest = () => {
     if (photoState !== "idle") return;
@@ -300,7 +332,7 @@ export default function App() {
     }
 
     console.log(
-      `Photographer: Requesting ${selectedResolution} from client ${clientPeer.id}`
+      `Photographer: Commanding client to take a ${selectedResolution} photo.`
     );
     const message = JSON.stringify({
       resolution: RESOLUTIONS[selectedResolution],
@@ -311,13 +343,9 @@ export default function App() {
       hmsActions.sendDirectMessage(
         message,
         clientPeer.id,
-        "REQUEST_RESOLUTION"
+        "TAKE_PHOTO_COMMAND"
       );
-      setPhotoState("waiting_ack");
-      photoRequestRef.current = {
-        clientId: clientPeer.id,
-        photographerId: localPeer?.id,
-      };
+      setPhotoState("waiting_for_photo");
     } catch (error) {
       // Catch the error, log it, and notify the user without crashing.
       console.error("Failed to send photo request:", error);
@@ -386,8 +414,7 @@ export default function App() {
                 disabled={photoState !== "idle"}
               >
                 {photoState === "idle" && "📸 Take Photo"}
-                {photoState === "waiting_ack" && "Waiting for Client..."}
-                {photoState === "uploading" && "Uploading..."}
+                {photoState === "waiting_for_photo" && "Waiting for Photo..."}
               </button>
             </div>
             {lastPhotoUrl && (
